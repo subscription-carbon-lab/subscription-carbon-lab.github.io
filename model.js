@@ -32,8 +32,44 @@ function evaluate(L,price,p){const {T,f,g,hs}=factors(L,p),d1=p.a-p.b*(1-p.delta
  const revenue=(1-p.delta)*price*d1+price*regular, totalCost=Object.values(costs).reduce((a,b)=>a+b,0),profit=revenue-totalCost;
  return {L,price,T,Q1:d1*T,Q2:regular*T,Q:(d1+regular)*T,CE,profit,revenue,totalCost,costs,emissions,tax:p.Ctau*CE,margin:100*d0/p.a,burden:profit>0?100*p.Ctau*CE/profit:null,d1,d0};}
 function bestPrice(L,p){const {f,g,hs}=factors(L,p),r=1-p.delta,c=p.c+p.Ctau*p.ec,v=p.Cv+p.Ctau*p.eCv,h=p.h+p.Ctau*p.eh;const lin=p.a*(r+f)+p.b*(r*(c+v+h*hs)+c*f+h*g),quad=p.b*(r*r+f);return Math.max(0,Math.min(p.a/p.b*(1-1e-10),lin/(2*quad)));}
-function golden(fn,lo,hi){const r=(Math.sqrt(5)-1)/2;let a=hi-r*(hi-lo),b=lo+r*(hi-lo),fa=fn(a),fb=fn(b);for(let i=0;i<65;i++){if(fa>fb){hi=b;b=a;fb=fa;a=hi-r*(hi-lo);fa=fn(a);}else{lo=a;a=b;fa=fb;b=lo+r*(hi-lo);fb=fn(b);}}return fa>fb?a:b;}
-function optimize(p,fixedPrice){validate(p);if(fixedPrice!==undefined&&(!Number.isFinite(fixedPrice)||fixedPrice<0||fixedPrice>=p.a/p.b))throw Error('Price must satisfy 0 <= p < a/b.');const low=Math.log(domain.minL),high=Math.log(domain.maxL),n=100,xs=Array.from({length:n+1},(_,i)=>low+(high-low)*i/n),fn=x=>{const l=Math.exp(x);return evaluate(l,fixedPrice===undefined?bestPrice(l,p):fixedPrice,p).profit;},ys=xs.map(fn);let best=ys.indexOf(Math.max(...ys)),x=xs[best];for(let i=1;i<n;i++)if(ys[i]>=ys[i-1]&&ys[i]>=ys[i+1]){const z=golden(fn,xs[i-1],xs[i+1]);if(fn(z)>fn(x))x=z;}const L=Math.exp(x),result=evaluate(L,fixedPrice===undefined?bestPrice(L,p):fixedPrice,p);result.boundary=L<domain.minL*1.01||L>domain.maxL*.99;return result;}
+// Derivatives are evaluated analytically, avoiding the flat objective-value
+// comparisons that can lose the fourth reported decimal near an optimum.
+function intervalDerivative(L,price,p){
+ const x=p.lambda*p.A*L,d1=p.a-p.b*(1-p.delta)*price,d0=p.a-p.b*price;
+ const c=p.c+p.Ctau*p.ec,h=p.h+p.Ctau*p.eh;
+ const K=(p.s+p.Ctau*p.es)/p.A+p.Cf+p.Ctau*p.eCf;
+ let term=1,fx=0,gL=0;
+ // term = x^n/n!; the positive series are stable even for small x.
+ for(let n=0;n<100;n++){
+  const df=term/(n+2),dg=term*(n+1)/(n+2);
+  fx+=df;gL+=dg;
+  if(n>8&&Math.abs(df)<1e-17*Math.abs(fx)&&Math.abs(dg)<1e-17*Math.abs(gL))break;
+  term*=x/(n+1);
+ }
+ return K/(L*L)-h*d1*(p.A+1)/2+d0*((price-c)*p.lambda*p.A*fx-h*p.A*gL);
+}
+function optimize(p,fixedPrice){
+ validate(p);
+ if(fixedPrice!==undefined&&(!Number.isFinite(fixedPrice)||fixedPrice<0||fixedPrice>=p.a/p.b))throw Error('Price must satisfy 0 <= p < a/b.');
+ const low=Math.log(domain.minL),high=Math.log(domain.maxL),n=160;
+ const at=x=>{const L=Math.exp(x);return evaluate(L,fixedPrice===undefined?bestPrice(L,p):fixedPrice,p);};
+ const derivative=x=>{const L=Math.exp(x);return intervalDerivative(L,fixedPrice===undefined?bestPrice(L,p):fixedPrice,p);};
+ const candidates=[at(low),at(high)];
+ let left=low,gl=derivative(left);
+ for(let i=1;i<=n;i++){
+  const right=low+(high-low)*i/n,gr=derivative(right);
+  if(gl>=0&&gr<=0){
+   let a=left,b=right;
+   for(let j=0;j<65;j++){const mid=(a+b)/2;if(mid===a||mid===b)break;if(derivative(mid)>0)a=mid;else b=mid;}
+   candidates.push(at((a+b)/2));
+  }
+  left=right;gl=gr;
+ }
+ const result=candidates.reduce((a,b)=>b.profit>a.profit?b:a);
+ result.boundary=result.L<domain.minL*1.01||result.L>domain.maxL*.99;
+ return result;
+}
 function sensitivity(p){const reference=optimize(p);return keys.flatMap(parameter=>changes.map(change=>{const values={...p,[parameter]:p[parameter]*(1+change/100)},r=optimize(values);const pct={};for(const key of ['L','price','T','Q1','Q2','Q','CE','profit'])pct[key]=Math.abs(reference[key])<1e-12?null:100*(r[key]/reference[key]-1);return {parameter,change,value:values[parameter],...r,pct};}));}
 const api={base,specs,keys,changes,domain,validate,evaluate,optimize,sensitivity,bestPrice};root.CarbonModel=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
+

@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const M = require('./dist/model.js');
+const M = require('./model.js');
 const near=(a,b,t,label)=>assert(Math.abs(a-b)<t,`${label}: ${a} vs ${b}`);
 const baseline=M.optimize(M.base);
 near(baseline.L,.0990685672154,1e-6,'Baseline L');
@@ -23,5 +23,6 @@ for(const p of [50,150,250,350]){const optimum=M.optimize(M.base,p);near(optimum
 for(const spec of M.specs)for(const v of [spec[3],spec[4]]){const r=M.optimize({...M.base,[spec[0]]:v});assert(Number.isFinite(r.profit));assert(r.L>=M.domain.minL*.99999&&r.L<=M.domain.maxL*1.00001);}
 const noTax=M.optimize({...M.base,Ctau:0});near(noTax.tax,0,1e-12,'Zero tax');assert(noTax.profit>=baseline.profit);assert.throws(()=>M.optimize({...M.base,b:0}));
 const dp=.001,dl=.00001,z=(l,p)=>M.evaluate(l,p,M.base).profit,L=baseline.L,p=baseline.price,f=z(L,p),hll=(z(L+dl,p)-2*f+z(L-dl,p))/dl**2,hpp=(z(L,p+dp)-2*f+z(L,p-dp))/dp**2,hlp=(z(L+dl,p+dp)-z(L+dl,p-dp)-z(L-dl,p+dp)+z(L-dl,p-dp))/(4*dl*dp);assert(hll<0&&hll*hpp-hlp*hlp>0,'Negative definite local Hessian');
-for(const filename of ['index.html','model.js','app.js','style.css'])assert(fs.statSync('dist/'+filename).size>0);
+for(const filename of ['index.html','model.js','app.js','style.css'])assert(fs.statSync(filename).size>0);
 console.log(JSON.stringify({status:'passed',scenarios:60,baseline:{L:baseline.L,price:baseline.price,profit:baseline.profit,CE:baseline.CE},maxCSVPercentagePointDifference:maxDifference,localHessian:{hll,det:hll*hpp-hlp*hlp},emissions:baseline.emissions},null,2));
+

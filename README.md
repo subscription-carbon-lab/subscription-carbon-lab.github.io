@@ -5,7 +5,9 @@ under a carbon tax. It determines the optimal subscription-delivery interval and
 selling price that maximise total profit per unit time, and reports the resulting
 carbon emissions.
 
-**Live dashboard:** https://USERNAME.github.io/subscription-carbon-lab/
+**Live dashboard:** https://subscription-carbon-lab.github.io/
+
+**Source:** https://github.com/subscription-carbon-lab/subscription-carbon-lab.github.io
 
 Everything runs in the browser. There is no backend, no tracking, no account and no
 installation: open the link and it computes. A Mathematica licence is not required.
@@ -26,8 +28,9 @@ Q₂ = (a − bp)(exp(λT) − 1)/λ
 H₁ = D₁ L² A(A + 1)/2                         integrated subscription inventory
 H₂ = (a − bp)[λT exp(λT) − exp(λT) + 1]/λ²    integrated regular inventory
 
-CE = [ŝ + ĉ(Q₁+Q₂) + Ĉf A + Ĉv Q₁ + ĥ(H₁+H₂)] / T
-Z  = [(1−δ)pQ₁ + pQ₂ − c(Q₁+Q₂) − s − Cf A − Cv Q₁ − h(H₁+H₂)] / T − Cτ CE
+CE(L,p) = ŝ + ĉ(Q₁+Q₂) + Ĉf A + Ĉv Q₁ + ĥ(H₁+H₂)
+CE_ann = CE(L,p) / T
+Z  = [(1−δ)pQ₁ + pQ₂ − c(Q₁+Q₂) − s − Cf A − Cv Q₁ − h(H₁+H₂)] / T − Cτ CE_ann
 ```
 
 `Z` is the objective, referred to throughout as Eq. (5). `H₁` and `H₂` denote
@@ -47,7 +50,11 @@ Fifteen continuous parameters are adjustable; `A` is fixed at 6 deliveries.
 
 Units: `$`/unit, `$`/order, `$`/shipment and `$`/unit/year for costs; `$`/kg-CO2e for
 the carbon tax; matching kg-CO2e units for the emission coefficients; years for time.
-The subscription discount is dimensionless.
+The subscription discount and shipment count A are dimensionless. Q₁, Q₂ and Q
+are quantities in units for one replenishment cycle, not annual flow rates.
+An order is a replenishment purchase from the supplier; a shipment is a subscription
+delivery to customers. One order is placed per replenishment cycle. CE(L,p) is in
+kg-CO2e; CE_ann is in kg-CO2e/year. The legacy internal model key `CE` means CE_ann.
 
 ## What the dashboard shows
 
@@ -63,11 +70,12 @@ The subscription discount is dimensionless.
 | 07 Complete dataset | All 60 sensitivity scenarios, filterable, sortable, exportable as CSV |
 | 08 Demand profile | Regular demand `D₂(t,p*)` and subscription demand `D₁(p*)` over the cycle |
 
-The carbon-tax burden is `Cτ·CE/Z × 100` when profit is positive; the demand
+The carbon-tax burden is `Cτ·CE_ann/Z × 100` when profit is positive; the demand
 feasibility margin is `(a − bp*)/a × 100`. Annual emissions are the cycle total
 divided by `T`, in kg-CO2e/year, while quantities are per replenishment cycle.
 
-A 30-second walkthrough is included as `dashboard-demo-30s.mp4`.
+The existing online repository also contains a 30-second walkthrough,
+`dashboard-demo-30s.mp4`; this source-only update does not replace that video.
 
 ## Illustrative baseline
 
@@ -77,9 +85,9 @@ and regular sales: `a`=800, `b`=2, `λ`=0.01, `δ`=0.4, `s`=$500/order, `c`=$30/
 `ŝ`=40, `ĥ`=0.2, `Ĉf`=50, `Ĉv`=2, `A`=6. They solve to:
 
 ```
-L* = 0.099068574 years      p* = $254.635225223 /unit
-Z* = $122,150.801992387 /year
-CE* = 2,791.557618557 kg-CO2e/year
+L* = 0.099068566073118 years      p* = $254.635225154541 /unit
+Z* = $122,150.8019923867 /year
+CE_ann* = 2,791.5576604770 kg-CO2e/year
 ```
 
 These values are an illustration of the method, not calibrated data. Parameters should
@@ -92,8 +100,9 @@ transport data, and the tax rate from the applicable regulation.
 
 At each delivery interval the selling price is optimized analytically from the
 quadratic profit function subject to `0 ≤ p < a/b`. A logarithmic grid over
-`L ∈ [0.00001, 10]` years is then refined at every detected interior maximum by
-golden-section search.
+`L ∈ [0.00001, 10]` years brackets positive-to-negative crossings of the analytic
+interval derivative. Bisection refines these stationary candidates; their profits
+are compared with both endpoints. Stable series avoid cancellation near λAL = 0.
 
 This is a numerical optimum on the stated search interval, **not** a proof of a global
 maximum over an unbounded replenishment horizon. The dashboard displays a warning when
@@ -106,14 +115,19 @@ ratios are shown as N/A. The delivery count `A` stays fixed throughout.
 
 ```
 node validate.cjs [reference-sensitivity.csv]
+node validate-precision.cjs
 ```
 
 Tests cover the baseline above, 60 finite and unique scenarios, input immutability,
 cost and emissions reconciliation, independent cycle-cost calculations, fixed-price
 re-optimization, slider endpoints, zero tax, invalid input and the local Hessian.
-Against a 56-row reference computed independently in a computer algebra system, the
-maximum difference was 0.000311 percentage points; that reference omitted `ĉ`, whereas
-this implementation includes all 15 continuous parameters.
+The precision regression compares all 60 scenarios and eight percentage-change
+outputs against `high_precision.json`, computed independently by Wolfram at 60-digit
+working precision using `verify_high_precision.wl`. All 480 percentage changes agree
+when rounded to four decimal places. This verifies the illustrative baseline and
+sensitivity cases, not all possible user inputs. The UI rounds only for display;
+CSV exports preserve JavaScript double precision. Optional zero cost, emission and
+tax inputs extend the strictly positive setting used for the manuscript example.
 
 ## Files
 
@@ -128,3 +142,4 @@ this implementation includes all 15 continuous parameters.
 
 Optional page-scoped WebMCP tools are feature-detected. A supported live WebMCP test
 context was not available during implementation, so that integration is unverified.
+
